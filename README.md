@@ -160,7 +160,7 @@ kubectl patch configmap/config-network \
         --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
 ```
 
-Kourier's bootstrap configuration assumes Knative Serving is installed in the `knative-serving`, 
+Kourier's bootstrap configuration assumes Knative Serving is installed in the `knative-serving` namespace, 
 and consequently the envoy readiness probe is failing. You need to update the bootstrap configuration
 to point to the actual Knative Serving namespace in the physical cluster.
 
