@@ -10,8 +10,7 @@ In a directory:
 git clone https://github.com/kcp-dev/kcp.git
 cd kcp
 git checkout tags/v0.5.0-alpha.1
-make build
-sudo cp bin/* /usr/local/bin
+make install
 ```
 
 ## Clone this repository
@@ -25,19 +24,19 @@ cd kcp-knative
 
 You will need three terminals:
 - one running KCP
-- one for running `kubectl` commands against the KCP cluster
-- one for running `kubectl` commands against the physical cluster.
+- one for running `kubectl` commands against the KCP workspace
+- one for running `kubectl` commands against the workload cluster
 
 The current directory in all terminals must be this repository root directory.
 
 ## Start KCP and create a new workspace
 
-1. In the KCP terminal, start KCP:
+1. In the KCP terminal, ensure that your ${PATH} contains the output directory of go install, and start kcp on your machine with:
     ```shell
     kcp start
     ```
 
-2. Switch to the KCP cluster terminal
+2. Switch to the KCP workspace terminal
 3. Export KUBECONFIG to point to your `kcp` instance:
 
     ```shell
@@ -56,9 +55,9 @@ The current directory in all terminals must be this repository root directory.
     Current workspace is "root:my-workspace".
     ``` 
  
-## Registering a physical cluster using `syncer`
+## Registering a SyncTarget
 
-1. Enable the syncer for a new cluster
+1. Enable the syncer for a new cluster (SyncTarget)
 
     ```shell
     kubectl kcp workload sync localcluster --resources=services,endpoints,pods --syncer-image ghcr.io/kcp-dev/kcp/syncer:fbc1f1a  > syncer.yaml
@@ -202,3 +201,4 @@ TODOs:
 - Eventing
 - HPA
 - PodDisruptionBudget
+- Knative Cluster Type
