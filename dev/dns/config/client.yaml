@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: client
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ping
+  namespace: client
+spec:
+  selector:
+    matchLabels:
+      app: ping
+  template:
+    metadata:
+      labels:
+        app: ping
+    spec:
+      containers:
+        - name: ping
+          image: ko://dns/cmd/client

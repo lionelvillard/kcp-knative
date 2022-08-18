@@ -4,13 +4,28 @@ This guide describes the steps to install Knative in KCP.
 
 ## Installing KCP from source
 
+This guide requires KCP with DNS support enabled. 
+
 In a directory:
 
 ```shell
 git clone https://github.com/kcp-dev/kcp.git
 cd kcp
-git checkout tags/v0.5.0-alpha.1
+gh pr checkout 1708 # DNS support
 make install
+```
+
+Then create a Kind cluster (or use your own cluster):
+
+```shell
+kind create cluster
+```
+
+Build and load the syncer and dns images into Kind:
+
+```shell
+KO_DOCKER_REPO=kind.local ko build -B ./cmd/syncer/
+KO_DOCKER_REPO=kind.local ko build -B ./cmd/coredns/
 ```
 
 ## Clone this repository
@@ -25,7 +40,7 @@ cd kcp-knative
 You will need three terminals:
 - one running KCP
 - one for running `kubectl` commands against the KCP workspace
-- one for running `kubectl` commands against the workload cluster
+- one for running `kubectl` commands against the workload (kind) cluster (previously created)
 
 The current directory in all terminals must be this repository root directory.
 
@@ -33,63 +48,60 @@ The current directory in all terminals must be this repository root directory.
 
 1. In the KCP terminal, ensure that your ${PATH} contains the output directory of go install, and start kcp on your machine with:
     ```shell
+    rm -rf .kcp/ # cleanup 
     kcp start
     ```
 
 2. Switch to the KCP workspace terminal
-3. Export KUBECONFIG to point to your `kcp` instance:
+3. Export KUBECONFIG to point to your KCP instance:
 
     ```shell
     export KUBECONFIG=$(pwd)/.kcp/admin.kubeconfig
     ```
  
-3. Create a KCP workspace and immediately enter it:
+4. By default, KCP starts with only one workspace (no batteries included), the root workspace.  
+   Create an organization workspace called `knative` and immediately enter it:
     
     ```shell
-    kubectl kcp workspace create my-workspace --enter
+    kubectl kcp workspace create knative --enter
     ```
 
     ```shell
-    Workspace "my-workspace" (type root:Universal) created. Waiting for it to be ready...
-    Workspace "my-workspace" (type root:Universal) is ready to use.
-    Current workspace is "root:my-workspace".
+    Workspace "knative" (type root:organization) created. Waiting for it to be ready...
+    Workspace "knative" (type root:organization) is ready to use.
+    Current workspace is "root:knative".
     ``` 
  
-## Registering a SyncTarget
+## Registering Kind as a SyncTarget
 
-1. Enable the syncer for a new cluster (SyncTarget)
-
-    ```shell
-    kubectl kcp workload sync localcluster --resources=services,endpoints,pods --syncer-image ghcr.io/kcp-dev/kcp/syncer:fbc1f1a  > syncer.yaml
-    ```
-2. Switch to the physical cluster (PC) terminal
-3. Create a Kubernetes cluster. You can use any Kubernetes cluster. This guide uses `kind`:
+1. Enable the syncer for the previously created Kind cluster:
 
     ```shell
-    kind create cluster
+    kubectl kcp workload sync kindcluster --resources=poddisruptionbudgets.policy,horizontalpodautoscalers.autoscaling,services,endpoints,pods --syncer-image kind.local/syncer --dns-image kind.local/coredns -o syncer.yaml
     ```
-
-4. Register the k8s cluster:
+   
+2. Switch to the physical cluster (PC) terminal and register the k8s cluster:
 
     ```shell
     kubectl apply -f syncer.yaml
     ```
 
-5. Verify the syncer is ready
+3. Verify the syncer is ready (if you don't have [`yq`](https://github.com/mikefarah/yq) just looks for a namespace starting with `kcp-syncer`):
 
     ```shell
-    kubectl get deployments.apps -n kcpsyncd3465d38e74d3834d4f3694c5bd77d0f015860900047e4ef1a30caf1 
-    NAME         READY   UP-TO-DATE   AVAILABLE   AGE
-    kcp-syncer   1/1     1            1           97s
+    kubectl get deployments.apps -n $(yq 'select(di == 1).metadata.namespace' syncer.yaml) 
+    NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
+    kcp-dns-kindcluster-l8dhp7f7      1/1     1            1           28s
+    kcp-syncer-kindcluster-l8dhp7f7   1/1     1            1           28s
     ```
 
 ## Installing Knative in KCP
 
 1. Switch to the KCP cluster terminal
-2. Install the Knative CRDs in KCP
+2. Install the Knative CRDs in the KCP knative workspace
     
     ```shell
-    kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.5.0/serving-crds.yaml
+    kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.6.0/serving-crds.yaml
     ```
 
 3. Verify 
@@ -114,50 +126,55 @@ The current directory in all terminals must be this repository root directory.
     services.serving.knative.dev                          2022-07-05T21:27:00Z
     ```
    
-You should see only `knative.dev` CRDs.
+   You should see only `knative.dev` CRDs.
 
-4. Install Knative Serving Core
 
-It is currently not possible to install vanilla Knative Serving in KCP
-due to these 3 KCP bugs/missing features:
-- https://github.com/kcp-dev/kcp/issues/498
-- Namespace DNS resolution (issue to be opened, related to: https://github.com/kcp-dev/kcp/issues/505)
-- No support for admission webhooks
+4. Install Knative Serving Core:
+    
+    ```shell
+    kubectl apply -f https://github.com/knative/serving/releases/download/knative-v1.6.0/serving-core.yaml
+    ```
 
-This repository contains a Knative Serving configuration compatible with KCP. Apply it:
-
-```shell
-kubectl apply -f serving-core.yaml
-```
+   > Note: ignore the last two errors `no matches for kind "HorizontalPodAutoscaler" in version "autoscaling/v2beta2`
 
 5. Wait a bit (20s-40s or more) and verify all Knative Serving deployments are ready:
 
-```shell
-kubectl -n knative-serving get deployments.apps 
-```
-
-```shell
-NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
-activator               1/0     1            1           27s
-autoscaler              1/1     1            1           26s
-controller              1/0     1            1           26s
-domain-mapping          1/0     1            1           26s
-domainmapping-webhook   1/0     1            1           26s
-webhook                 1/0     1            1           26s
-```
+   ```shell
+   kubectl -n knative-serving get deployments.apps 
+   ```
+   
+   ```shell
+   kubectl -n knative-serving get deployments.apps 
+   NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
+   activator               1/0     1            1           83s
+   autoscaler              1/1     1            1           83s
+   controller              1/0     1            1           83s
+   domain-mapping          1/0     1            1           83s
+   domainmapping-webhook   1/0     1            1           83s
+   webhook                 1/0     1            1           82s
+   ```
 
 6. Install the networking layer. This guide uses net-kourier:
 
-```shell
-kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.5.0/kourier.yaml
-```
+   ```shell
+   kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.6.0/kourier.yaml
+   ```
 
-```shell
-kubectl patch configmap/config-network \
-        --namespace knative-serving \
-        --type merge \
-        --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
-```
+    Since KCP does not support admission controllers yet the config map validating
+    webhook needs to be deleted:
+
+   ```shell
+   kubectl delete validatingwebhookconfigurations.admissionregistration.k8s.io config.webhook.serving.knative.dev
+   ```
+
+   Patch the network configmap:
+ 
+   ```shell
+   kubectl patch configmap/config-network \
+           --namespace knative-serving \
+           --type merge \
+           --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
+   ```
 
 Kourier's bootstrap configuration assumes Knative Serving is installed in the `knative-serving` namespace, 
 and consequently the envoy readiness probe is failing. You need to update the bootstrap configuration
@@ -199,6 +216,4 @@ Deleting the service is currently not possible due to KCP not embedding a garbag
 
 TODOs:
 - Eventing
-- HPA
-- PodDisruptionBudget
-- Knative Cluster Type
+- HPA 
