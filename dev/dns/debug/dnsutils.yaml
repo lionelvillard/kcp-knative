@@ -11,4 +11,15 @@ spec:
         - sleep
         - "3600"
       imagePullPolicy: IfNotPresent
+  dnsConfig:
+    nameservers:
+      - 10.96.250.97
+    options:
+      - name: ndots
+        value: "5"
+    searches:
+      - kourier-system.svc.cluster.local
+      - svc.cluster.local
+      - cluster.local
+  dnsPolicy: None
   restartPolicy: Always

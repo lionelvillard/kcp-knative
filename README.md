@@ -154,20 +154,21 @@ The current directory in all terminals must be this repository root directory.
    webhook                 1/0     1            1           82s
    ```
 
-6. Install the networking layer. This guide uses net-kourier:
+6. Install the networking layer. This guide uses [net-kourier](https://github.com/knative-sandbox/net-kourier).
 
    ```shell
    kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.6.0/kourier.yaml
    ```
-
-    Since KCP does not support admission controllers yet the config map validating
-    webhook needs to be deleted:
+   
+7. Since KCP does not support admission controllers yet the config map validating
+   webhook needs to be deleted:
 
    ```shell
-   kubectl delete validatingwebhookconfigurations.admissionregistration.k8s.io config.webhook.serving.knative.dev
+   kubectl delete validatingwebhookconfigurations.admissionregistration.k8s.io --all
+   kubectl delete mutatingwebhookconfigurations.admissionregistration.k8s.io  --all
    ```
 
-   Patch the network configmap:
+8. Patch the network configmap:
  
    ```shell
    kubectl patch configmap/config-network \
@@ -175,27 +176,6 @@ The current directory in all terminals must be this repository root directory.
            --type merge \
            --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
    ```
-
-Kourier's bootstrap configuration assumes Knative Serving is installed in the `knative-serving` namespace, 
-and consequently the envoy readiness probe is failing. You need to update the bootstrap configuration
-to point to the actual Knative Serving namespace in the physical cluster.
-
-First you need to find out the name of the namespace in the physical cluster corresponding to `knative-serving`.
-In the physical cluster terminal (the one where you created the kind cluster), run this command: 
-
-```shell
-kubectl get ns -oyaml
-```
-Then look for the namespace with the annotation `kcp.dev/namespace-locator: '{"logical-cluster":"root:my-workspace","namespace":"knative-serving"}'`.
-
-Back to the terminal pointing to KCP, run `kubectl edit cm -n kourier-system kourier-bootstrap`, search for
-`knative-serving` and replace by the namespace name you found earlier. 
-
-Back to the terminal pointing to the physical cluster, restart the envoy pod:
-
-```shell
-kubectl rollout restart deployment -n <the namespace where kourier is installed> 3scale-kourier-gateway 
-```
 
 ## Deploying your first Knative service
 
@@ -208,9 +188,9 @@ kn service create hello \
 --env TARGET=World
 ```
 
+This is not working yet (issue with probing)
+
 Deleting the service is currently not possible due to KCP not embedding a garbage collector.
-
-
 
 ## TODOs
 
