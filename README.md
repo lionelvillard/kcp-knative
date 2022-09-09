@@ -18,14 +18,13 @@ make install
 Then create a Kind cluster (or use your own cluster):
 
 ```shell
-kind create cluster
+kind create cluster --config kind-config.yaml
 ```
 
-Build and load the syncer and dns images into Kind:
+Build and load the syncer image into kind:
 
 ```shell
 KO_DOCKER_REPO=kind.local ko build -B ./cmd/syncer/
-KO_DOCKER_REPO=kind.local ko build -B ./cmd/coredns/
 ```
 
 ## Clone this repository
@@ -77,7 +76,7 @@ The current directory in all terminals must be this repository root directory.
 1. Enable the syncer for the previously created Kind cluster:
 
     ```shell
-    kubectl kcp workload sync kindcluster --resources=poddisruptionbudgets.policy,horizontalpodautoscalers.autoscaling,services,endpoints,pods --syncer-image kind.local/syncer --dns-image kind.local/coredns -o syncer.yaml
+    kubectl kcp workload sync kindcluster --resources=poddisruptionbudgets.policy,horizontalpodautoscalers.autoscaling,services,endpoints,pods --syncer-image kind.local/syncer -o syncer.yaml
     ```
    
 2. Switch to the physical cluster (PC) terminal and register the k8s cluster:
@@ -154,13 +153,15 @@ The current directory in all terminals must be this repository root directory.
    webhook                 1/0     1            1           82s
    ```
 
+   > Note: there is a kcp bug setting default `replicas` to 0 instead of 1
+
 6. Install the networking layer. This guide uses [net-kourier](https://github.com/knative-sandbox/net-kourier).
 
    ```shell
    kubectl apply -f https://github.com/knative/net-kourier/releases/download/knative-v1.6.0/kourier.yaml
    ```
    
-7. Since KCP does not support admission controllers yet the config map validating
+7. Since KCP does not support service-based admission controllers yet the config map validating
    webhook needs to be deleted:
 
    ```shell
@@ -177,6 +178,20 @@ The current directory in all terminals must be this repository root directory.
            --patch '{"data":{"ingress-class":"kourier.ingress.networking.knative.dev"}}'
    ```
 
+9. Verify kourier is up and running:
+
+   ```shell 
+   kubectl get deployments.apps -n kourier-system
+   NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+   3scale-kourier-gateway   1/0     1            1           98s
+   ```
+   
+   ```shell
+   kubectl get deployments.apps -n knative-serving net-kourier-controller 
+   NAME                     READY   UP-TO-DATE   AVAILABLE   AGE
+   net-kourier-controller   1/1     1            1           2m45s
+   ```
+
 ## Deploying your first Knative service
 
 In the KCP terminal, deploy the hello world app:
@@ -188,7 +203,19 @@ kn service create hello \
 --env TARGET=World
 ```
 
-This is not working yet (issue with probing)
+The service does not become ready because of the lack of 
+support for service-based admission webhooks, preventing defaults to be
+set by Knative defaulting webhooks. Let's add them by hand.
+
+Add PodAutoscaler annotation 
+
+```shell
+ annotations:
+      autoscaling.knative.dev/class: kpa.autoscaling.knative.dev
+```
+
+
+Issue with endpoints...
 
 Deleting the service is currently not possible due to KCP not embedding a garbage collector.
 
